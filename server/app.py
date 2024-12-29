@@ -20,10 +20,106 @@ migrate = Migrate(app, db)
 
 db.init_app(app)
 
+api = Api(app)
+
 
 @app.route('/')
 def home():
     return ''
+
+class Campers(Resource):
+    def get(self):
+        camper_list = [camper.to_dict_without_signups() for camper in Camper.query.all()]
+        return make_response(jsonify(camper_list), '200')
+
+    def post(self):
+        data = request.get_json()
+        try:
+            new_camper = Camper(
+                name = data['name'],
+                age = data['age']
+            )
+            db.session.add(new_camper)
+            db.session.commit()
+
+            return make_response(new_camper.to_dict(), 201)
+        except ValueError:
+            return make_response ({"errors": "Validation errors"}, 400)
+        
+            
+api.add_resource(Campers, '/campers')
+
+class CampersById(Resource):
+    def get(self, id):
+        camper = Camper.query.filter_by(id=id).first()
+        if camper:
+            return make_response(camper.to_dict(), 200)
+        else:
+            return ({"error": "Camper not found"}, 404)
+
+    def patch(self, id):
+        camper = Camper.query.filter_by(id=id).first()
+        if not camper:
+            return make_response({'error': 'Camper not found'}, 404)
+
+        try:
+            data = request.get_json()
+            if 'name' in data and not data['name']:
+                raise ValueError("Name cannot be empty")
+            if 'age' in data:
+                if not (8 <= data['age'] <= 18):
+                    raise ValueError("age must be between 8 and 18")
+                camper.age = data['age']
+            if 'name' in data:
+                camper.name = data['name']
+
+            db.session.add(camper)
+            db.session.commit()
+            return make_response(camper.to_dict(), 202)
+
+        except ValueError as e:
+            return make_response({'errors': ['validation errors']}, 400)
+
+api.add_resource(CampersById, '/campers/<int:id>')
+
+class Activities(Resource):
+    def get(self):
+        activity_list = [activity.to_dict() for activity in Activity.query.all()]
+        return make_response(jsonify(activity_list), 200)
+
+api.add_resource(Activities, '/activities')
+
+class ActivitiesById(Resource):
+    def delete(self, id):
+        activity = Activity.query.filter_by(id=id).first()
+
+        if activity is None:
+            return make_response({'error': 'Activity not found'}, 404)
+
+        db.session.delete(activity)
+        db.session.commit()
+
+        return make_response('', 204)
+
+api.add_resource(ActivitiesById, '/activities/<int:id>')
+
+class Signups(Resource):
+    def post(self):
+        data = request.get_json()
+        try:
+            new_camper = Signup(
+                camper_id = data['camper_id'],
+                activity_id = data['activity_id'],
+                time = data['time']
+            )
+            db.session.add(new_camper)
+            db.session.commit()
+
+            return make_response(new_camper.to_dict(),201)
+        except ValueError:
+            return make_response({'errors': ['validation errors']}, 400)
+
+api.add_resource(Signups, '/signups')
 
 if __name__ == '__main__':
     app.run(port=5555, debug=True)
